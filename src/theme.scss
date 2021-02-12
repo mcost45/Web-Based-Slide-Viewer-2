@@ -10,9 +10,17 @@
   $accent: map-get($config, accent);
 
   // Define any styles affected by the theme.
-  .text-color-primary {
+  .color-primary {
     // Use mat-color to extract individual colors from a palette.
     color: mat-color($primary);
+  }
+  .color-accent {
+    // Use mat-color to extract individual colors from a palette.
+    color: mat-color($accent);
+  }
+  .displayregion {
+    border-color: mat-color($accent)!important;
+    border-width: 4px!important;
   }
 }
 @mixin candy-carousel-typography($config-or-theme) {

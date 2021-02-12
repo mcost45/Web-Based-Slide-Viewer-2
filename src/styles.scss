@@ -24,3 +24,36 @@ $theme: mat-light-theme((
 
 html, body { height: 100%; }
 body { margin: 0; font-family: Roboto, "Helvetica Neue", sans-serif; }
+
+.centre-absolute {
+  position: absolute!important;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+.centre-margin {
+  margin: auto;
+}
+.flex-column {
+  display: flex;
+  flex-flow: column;
+  height: 100%;
+}
+.flex-fill {
+  flex: 1 1 auto;
+}
+.elevate-z-2 {
+  z-index: 2;
+}
+.pos-relative {
+  position: relative;
+}
+.block {
+  display: block!important;
+}
+.bold {
+  font-weight: 600;
+}
+.card-border-radius {
+  border-radius: 4px;
+}

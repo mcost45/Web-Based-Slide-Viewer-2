@@ -1,0 +1,11 @@
+<mat-card class="mat-elevation-z6 elevate-z-2 side-options"  *ngIf="loadingProgress == 100">
+  <mat-card-title>Options</mat-card-title>
+  <mat-card-content>
+    <span class="mat-body-strong">Brightness:</span>
+    <mat-slider thumbLabel min="-100" max="100" value="0" class="block" (input)="changeBrightness($event)"></mat-slider>
+    <span class="mat-body-strong">Contrast:</span>
+    <mat-slider thumbLabel min="-100" max="100" value="0" class="block" (input)="changeContrast($event)"></mat-slider>
+    <span class="mat-body-strong">Saturation:</span>
+    <mat-slider thumbLabel min="-100" max="100" value="0" class="block" (input)="changeSaturation($event)"></mat-slider>
+  </mat-card-content>
+</mat-card>
