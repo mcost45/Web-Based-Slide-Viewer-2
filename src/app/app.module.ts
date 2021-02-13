@@ -25,7 +25,7 @@ import { ViewComponent } from './view/view.component';
     PageContentComponent,
     LoadingCardComponent,
     ViewerSettingsComponent,
-    ViewComponent
+    ViewComponent,
   ],
   imports: [
     BrowserModule,

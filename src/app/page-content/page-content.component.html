@@ -1,5 +1,7 @@
+<!-- Input loading progress value to components -->
 <app-loading-card [loadingProgress]="(loadingProgress$ | async)"></app-loading-card>
 <app-viewer-settings [loadingProgress]="(loadingProgress$ | async)"></app-viewer-settings>
+<!-- Input adjustment filter values to view component to set them on the OSD canvas -->
 <app-view
   [brightness]="(brightness$ | async)"
   [contrast]="(contrast$ | async)"

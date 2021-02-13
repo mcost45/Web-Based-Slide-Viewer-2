@@ -2,7 +2,6 @@ import { Component, OnInit } from '@angular/core';
 import { Store, select } from '@ngrx/store';
 import { AppState, selectLoading, selectBrightness, selectContrast, selectSaturation } from '../app.reducer';
 import { Observable } from 'rxjs';
-import { take } from 'rxjs/operators';
 
 @Component({
   selector: 'app-page-content',

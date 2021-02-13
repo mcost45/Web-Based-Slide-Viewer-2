@@ -1,5 +1,5 @@
 import { AppConstants } from '../app.constants';
-import { Component, Input, OnInit, OnChanges, SimpleChanges } from '@angular/core';
+import { Component, Input, OnInit, OnChanges } from '@angular/core';
 import { Store } from '@ngrx/store';
 import { SetProgress } from '../app.actions';
 import { AppState } from '../app.reducer';
@@ -14,6 +14,7 @@ import * as XMLJS from 'xml-js';
   styleUrls: ['./view.component.css']
 })
 export class ViewComponent implements OnInit, OnChanges {
+  // import component constants
   readonly DEFAULT_VMIC = AppConstants.DEFAULT_VMIC;
   readonly DZC_OUTPUT_DIR = AppConstants.DZC_OUTPUT_DIR;
   readonly DEFAULT_ZIP_DATA_TYPE = AppConstants.DEFAULT_ZIP_DATA_TYPE;
@@ -22,33 +23,58 @@ export class ViewComponent implements OnInit, OnChanges {
   readonly XML_ELEMENT = AppConstants.XML_ELEMENT;
   readonly XML_ELEMENT_SIZE = AppConstants.XML_ELEMENT_SIZE;
   readonly XML_ATTRIBUTES = AppConstants.XML_ATTRIBUTES;
-  readonly VMIC_MAX_ZOOM = AppConstants.VMIC_MAX_ZOOM;
+  readonly OSD_SETTINGS = AppConstants.OSD_SETTINGS;
+  // store zip object
   private zipVMIC: JSZip;
+  // store OSD view object
   private view: OSD.Viewer;
+  // initialise store and JSZip
   constructor(private store: Store<AppState>) {
     this.zipVMIC = new JSZip();
   }
-
+  // inputs for adjustment filter values
   @Input() brightness: number;
   @Input() contrast: number;
   @Input() saturation: number;
+  // static utility functions
+  private static getFileNameFromPath(path: string): string {
+    return path.split('\\').pop().split('/').pop();
+  }
+  private static removeFileExtension(file: string): string {
+    return file.replace(/\.[^/.]+$/, '');
+  }
+  private static getCoords(X_Y: string): string[] {
+    return X_Y.split('_');
+  }
+  private static updateFilters(element: HTMLElement, contrast: number, brightness: number, saturation: number): void {
+    element.style.filter = 'contrast(' + (100 + contrast) + '%) ' +
+      'brightness(' + (100 + brightness) + '%) ' +
+      'saturate(' + (100 + saturation) + '%)';
+  }
   ngOnInit(): void {
+    // begin unzipping .vmic & loading OSD view with the tiles
     this.loadView();
   }
+  // update adjustment filters on input changes
   ngOnChanges(): void {
     if (this.view != null) {
-      this.updateFilters(this.view.drawer.canvas, this.contrast, this.brightness, this.saturation);
+      ViewComponent.updateFilters(this.view.drawer.canvas, this.contrast, this.brightness, this.saturation);
     }
   }
-
+  // main component function
   private loadView(): void {
     const vmicPath = this.VMIC_LOCATION + this.DEFAULT_VMIC;
+    // variables to store the DZC Output XML OSD settings
     let TSOptionsAttributes: object;
     let TSOptionsSizeAttributes: object;
     let xmlObject: XMLJS.Element | XMLJS.ElementCompact;
+    // unzip the .vmic file, then run callback
     this.unzipBase(vmicPath, this.zipVMIC, (VMICI) => {
+      // unzip the Image/.vmici file, then run callback
       this.unzipNested(VMICI, this.DEFAULT_ZIP_DATA_TYPE, this.DZC_OUTPUT_DIR, (contents) => {
+        // retrieve the dzc output xml settings & all tiles in an array, stored as blob URLs, then run callback
         this.getDzcOutput(contents, this.PYRAMID_FILE, (file, outputBlobs) => {
+          // loading has completed, loading state: 100
           this.store.dispatch(new SetProgress(100));
           if (!file) {
             console.log('Could not find ' + this.PYRAMID_FILE);
@@ -58,7 +84,9 @@ export class ViewComponent implements OnInit, OnChanges {
             console.log('Could not load output files');
             return 0;
           }
+          // no longer need to keep zip object in memory
           this.zipVMIC = null;
+          // get OSD settings from DZC Output XML
           file.text().then(text => {
             xmlObject = XMLJS.xml2js(text, {
               compact: true,
@@ -67,13 +95,16 @@ export class ViewComponent implements OnInit, OnChanges {
             });
             TSOptionsAttributes = xmlObject[this.XML_ELEMENT][this.XML_ATTRIBUTES];
             TSOptionsSizeAttributes = xmlObject[this.XML_ELEMENT][this.XML_ELEMENT_SIZE][this.XML_ATTRIBUTES];
+            // load OSD with the tiles
             this.initiateOSD(TSOptionsAttributes, TSOptionsSizeAttributes, outputBlobs);
           });
         });
       });
     });
   }
+  // unzip a zip file in path
   private unzipBase(file: string, zipObject: JSZip, onComplete: (unzipped: JSZip) => void): void {
+    // convert zip to binary first then load content asynchronously
     JSZipUtils.getBinaryContent(file, (err, data) => {
       if (err) {
         throw err;
@@ -85,10 +116,12 @@ export class ViewComponent implements OnInit, OnChanges {
       });
     });
   }
+  // unzip a nested zip file within an unzipped zip file (contents stored in memory)
   private unzipNested(zipObject: JSZip, dataType: any, path: string, onComplete: (unzipped: JSZip) => void): void {
     let percent;
     let newPercent;
     zipObject.file(path).async(dataType, (progress) => {
+      // update new loading percentage states
       percent = Math.round(progress.percent * 0.99);
       if (percent !== newPercent) {
         newPercent = percent;
@@ -103,87 +136,77 @@ export class ViewComponent implements OnInit, OnChanges {
     });
   }
   private getDzcOutput(contents: JSZip, filename: string, onComplete: (file: Blob, outputBlobs: URL[][][]) => void): void {
+    // set up vars to retrieve tiles from zip files
     let zoomLevel = 0;
     let fileSearch: RegExp = new RegExp('dzc_output_files\\\\' + zoomLevel);
     let fileSearchResults: JSZip.JSZipObject[] = contents.file(fileSearch);
     let len: number = fileSearchResults.length;
+    // 3D array to contain tile blob URLs: [level][x][y]
     const blobUrls: URL[][][] = [];
+    // iterate through tiles at different zoom levels, generating blob URLS to be stored in array[level][x][y]
+    // stop once no results are returned -> all existing zoom level directories have been processed
     while (len !== 0) {
+      // closure with trackVars to maintain loop vars within asynchronous functions
       (trackVars => {
+        // initialise empty array at current zoom level
         blobUrls[trackVars.zoomLevel] = [];
+        // process each of the tile files at current zoom level
         fileSearchResults.forEach((value, index) => {
           const resultFilePath = value.name;
-          const resultFileName = this.removeFileExtension(this.getFileNameFromPath(resultFilePath));
-          const xPos = this.getCoords(resultFileName)[0];
-          const yPos = this.getCoords(resultFileName)[1];
+          const resultFileName = ViewComponent.removeFileExtension(ViewComponent.getFileNameFromPath(resultFilePath));
+          const xPos = ViewComponent.getCoords(resultFileName)[0];
+          const yPos = ViewComponent.getCoords(resultFileName)[1];
           if (blobUrls[trackVars.zoomLevel][xPos] === undefined) {
             blobUrls[trackVars.zoomLevel][xPos] = [];
           }
+          // generate a blob for the tile then its URL, store in array
           value.async('blob').then((file) => {
             blobUrls[trackVars.zoomLevel][xPos][yPos] = URL.createObjectURL(file);
             contents.file(filename).async('blob').then((filePyramid) => {
-              if (index === (trackVars.len - 1) && trackVars.zoomLevel === this.VMIC_MAX_ZOOM) {
+              if (index === (trackVars.len - 1) && trackVars.zoomLevel === this.OSD_SETTINGS.MAX_LEVEL) {
                 onComplete(filePyramid, blobUrls);
               }
             });
           });
         });
       })({zoomLevel, len});
+      // update search vars for next iteration of loop at incrementing zoom levels
       fileSearch = new RegExp('dzc_output_files\\\\' + ++zoomLevel + '\\\\');
       fileSearchResults = contents.file(fileSearch);
       len = fileSearchResults.length;
     }
   }
   private initiateOSD(imageOptions, sizeOptions, blobs): void {
+    // initiate OpenSeadragon with options and loaded tiles
     this.view = OSD({
-      id: 'osd-wrapper',
-      showNavigationControl: false,
-      showNavigator: true,
-      navigatorPosition: 'ABSOLUTE',
-      navigatorLeft: '16px',
-      navigatorTop: '16px',
-      navigatorWidth: '124px',
-      navigatorHeight: '100px',
-      navigatorAutoResize: false,
-      navigatorAutoFade: false,
-      navigatorMaintainSizeRatio: false,
-      navigatorBorderColor: 'none',
-      navigatorOpacity: 1,
-      visibilityRatio: 0.7,
-      zoomPerScroll: 1.55,
-      gestureSettingsMouse: {
-        clickToZoom: false,
-        dblClickToZoom: true
-      },
+      id: this.OSD_SETTINGS.WRAPPER_ID,
+      showNavigationControl: this.OSD_SETTINGS.SHOW_NAVIGATION_CONTROL,
+      showNavigator: this.OSD_SETTINGS.SHOW_NAVIGATOR,
+      navigatorPosition: this.OSD_SETTINGS.NAVIGATOR_POSITION,
+      navigatorLeft: this.OSD_SETTINGS.NAVIGATOR_LEFT,
+      navigatorTop: this.OSD_SETTINGS.NAVIGATOR_TOP,
+      navigatorWidth: this.OSD_SETTINGS.NAVIGATOR_WIDTH,
+      navigatorHeight: this.OSD_SETTINGS.NAVIGATOR_HEIGHT,
+      navigatorAutoResize: this.OSD_SETTINGS.NAVIGATOR_AUTO_RESIZE,
+      navigatorAutoFade: this.OSD_SETTINGS.NAVIGATOR_AUTO_FADE,
+      navigatorMaintainSizeRatio: this.OSD_SETTINGS.NAVIGATOR_MAINTAIN_SIZE_RATIO,
+      navigatorBorderColor: this.OSD_SETTINGS.NAVIGATOR_BORDER_COLOR,
+      navigatorOpacity: this.OSD_SETTINGS.NAVIGATOR_OPACITY,
+      visibilityRatio: this.OSD_SETTINGS.VISIBILITY_RATIO,
+      zoomPerScroll: this.OSD_SETTINGS.ZOOM_PER_SCROLL,
+      gestureSettingsMouse: this.OSD_SETTINGS.GESTURE_SETTINGS_MOUSE,
       tileSources: {
-        height: parseInt(sizeOptions['Height'], 10),
-        width: parseInt(sizeOptions['Width'], 10),
-        tileSize: parseInt(imageOptions['TileSize'], 10),
-        tileOverlap: parseInt(imageOptions['Overlap'], 10),
-        maxLevel: this.VMIC_MAX_ZOOM,
-        minLevel: 10,
+        height: parseInt(sizeOptions.Height, 10),
+        width: parseInt(sizeOptions.Width, 10),
+        tileSize: parseInt(imageOptions.TileSize, 10),
+        tileOverlap: parseInt(imageOptions.Overlap, 10),
+        maxLevel: this.OSD_SETTINGS.MAX_LEVEL,
+        minLevel: this.OSD_SETTINGS.MIN_LEVEL,
         getTileUrl: (level, x, y) => {
           return blobs[level][x][y];
         }
       }
     });
-    this.view['navigator'].element.classList.add('mat-elevation-z6', 'card-border-radius');
-  }
-  // setProgress(value) {
-  //   this.store.dispatch();
-  // }
-  private getFileNameFromPath(path: string): string {
-    return path.split('\\').pop().split('/').pop();
-  }
-  private removeFileExtension(file: string): string {
-    return file.replace(/\.[^/.]+$/, '');
-  }
-  private getCoords(X_Y: string): string[] {
-    return X_Y.split('_');
-  }
-  private updateFilters(element: HTMLElement, contrast: number, brightness: number, saturation: number): void {
-    element.style.filter = 'contrast(' + (100 + contrast) + '%) ' +
-      'brightness(' + (100 + brightness) + '%) ' +
-      'saturate(' + (100 + saturation) + '%)';
+    this.view.navigator.element.classList.add('mat-elevation-z6', 'card-border-radius');
   }
 }
