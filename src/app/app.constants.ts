@@ -7,7 +7,7 @@ export class AppConstants {
   // data type to load zip contents as
   public static DEFAULT_ZIP_DATA_TYPE = 'blob';
   // location that the .vmic files are stored in
-  public static VMIC_LOCATION = 'assets/vmics/';
+  public static VMIC_LOCATION = 'assets/VMICs/';
   // name of the dzc_output XML file with OSD settings
   public static PYRAMID_FILE = 'dzc_output.xml';
   // element within the dzc_output XML file with OSD Image setting attributes

@@ -28,14 +28,17 @@ export class ViewComponent implements OnInit, OnChanges {
   private zipVMIC: JSZip;
   // store OSD view object
   private view: OSD.Viewer;
+
   // initialise store and JSZip
   constructor(private store: Store<AppState>, private zone: NgZone) {
     this.zipVMIC = new JSZip();
   }
+
   // inputs for adjustment filter values
   @Input() brightness: number;
   @Input() contrast: number;
   @Input() saturation: number;
+
   // static utility functions
   private static getFileNameFromPath(path: string): string {
     return path.split('\\').pop().split('/').pop();
@@ -51,61 +54,65 @@ export class ViewComponent implements OnInit, OnChanges {
       'brightness(' + (100 + brightness) + '%) ' +
       'saturate(' + (100 + saturation) + '%)';
   }
+
   ngOnInit(): void {
     // begin unzipping .vmic & loading OSD view with the tiles
-    this.zone.runOutsideAngular(() => {
-      this.loadView();
-    });
+    this.loadView();
   }
+
   // update adjustment filters on input changes
   ngOnChanges(): void {
     if (this.view != null) {
       ViewComponent.updateFilters(this.view.drawer.canvas, this.contrast, this.brightness, this.saturation);
     }
   }
+
   // main component function
   private loadView(): void {
-    const vmicPath = this.VMIC_LOCATION + this.DEFAULT_VMIC;
-    // variables to store the DZC Output XML OSD settings
-    let TSOptionsAttributes: object;
-    let TSOptionsSizeAttributes: object;
-    let xmlObject: XMLJS.Element | XMLJS.ElementCompact;
-    // unzip the .vmic file, then run callback
-    this.unzipBase(vmicPath, this.zipVMIC, (VMICI) => {
-      // unzip the Image/.vmici file, then run callback
-      this.unzipNested(VMICI, this.DEFAULT_ZIP_DATA_TYPE, this.DZC_OUTPUT_DIR, (contents) => {
-        // retrieve the dzc output xml settings & all tiles in an array, stored as blob URLs, then run callback
-        this.getDzcOutput(contents, this.PYRAMID_FILE, (file, outputBlobs) => {
-          // loading has completed, loading state: 100
-          this.zone.run(() => {
-            this.store.dispatch(new SetProgress(100));
-            // no longer need to keep zip object in memory
-            this.zipVMIC = null;
-          });
-          if (!file) {
-            console.log('Could not find ' + this.PYRAMID_FILE);
-            return 0;
-          }
-          if (outputBlobs.length === 0) {
-            console.log('Could not load output files');
-            return 0;
-          }
-          // get OSD settings from DZC Output XML
-          file.text().then(text => {
-            xmlObject = XMLJS.xml2js(text, {
-              compact: true,
-              ignoreDeclaration: true,
-              nativeType: true
+    this.zone.runOutsideAngular(() => {
+      const vmicPath = this.VMIC_LOCATION + this.DEFAULT_VMIC;
+      // variables to store the DZC Output XML OSD settings
+      let TSOptionsAttributes: object;
+      let TSOptionsSizeAttributes: object;
+      let xmlObject: XMLJS.Element | XMLJS.ElementCompact;
+      // unzip the .vmic file, then run callback
+      this.unzipBase(vmicPath, this.zipVMIC, (VMICI) => {
+        // unzip the Image/.vmici file, then run callback
+        this.unzipNested(VMICI, this.DEFAULT_ZIP_DATA_TYPE, this.DZC_OUTPUT_DIR, (contents) => {
+          // retrieve the dzc output xml settings & all tiles in an array, stored as blob URLs, then run callback
+          this.getDzcOutput(contents, this.PYRAMID_FILE, (file, outputBlobs) => {
+            // loading has completed, loading state: 100
+            this.zone.run(() => {
+              this.store.dispatch(new SetProgress(100));
+              // no longer need to keep zip object in memory
+              this.zipVMIC = null;
             });
-            TSOptionsAttributes = xmlObject[this.XML_ELEMENT][this.XML_ATTRIBUTES];
-            TSOptionsSizeAttributes = xmlObject[this.XML_ELEMENT][this.XML_ELEMENT_SIZE][this.XML_ATTRIBUTES];
-            // load OSD with the tiles
-            this.initiateOSD(TSOptionsAttributes, TSOptionsSizeAttributes, outputBlobs);
+            if (!file) {
+              console.log('Could not find ' + this.PYRAMID_FILE);
+              return 0;
+            }
+            if (outputBlobs.length === 0) {
+              console.log('Could not load output files');
+              return 0;
+            }
+            // get OSD settings from DZC Output XML
+            file.text().then(text => {
+              xmlObject = XMLJS.xml2js(text, {
+                compact: true,
+                ignoreDeclaration: true,
+                nativeType: true
+              });
+              TSOptionsAttributes = xmlObject[this.XML_ELEMENT][this.XML_ATTRIBUTES];
+              TSOptionsSizeAttributes = xmlObject[this.XML_ELEMENT][this.XML_ELEMENT_SIZE][this.XML_ATTRIBUTES];
+              // load OSD with the tiles
+              this.initiateOSD(TSOptionsAttributes, TSOptionsSizeAttributes, outputBlobs);
+            });
           });
         });
       });
     });
   }
+
   // unzip a zip file in path
   private unzipBase(file: string, zipObject: JSZip, onComplete: (unzipped: JSZip) => void): void {
     // convert zip to binary first then load content asynchronously
@@ -120,6 +127,7 @@ export class ViewComponent implements OnInit, OnChanges {
       });
     });
   }
+
   // unzip a nested zip file within an unzipped zip file (contents stored in memory)
   private unzipNested(zipObject: JSZip, dataType: any, path: string, onComplete: (unzipped: JSZip) => void): void {
     let percent;
@@ -141,6 +149,7 @@ export class ViewComponent implements OnInit, OnChanges {
       throw err;
     });
   }
+
   private getDzcOutput(contents: JSZip, filename: string, onComplete: (file: Blob, outputBlobs: URL[][][]) => void): void {
     // set up vars to retrieve tiles from zip files
     let zoomLevel = 0;
@@ -182,6 +191,7 @@ export class ViewComponent implements OnInit, OnChanges {
       len = fileSearchResults.length;
     }
   }
+
   private initiateOSD(imageOptions, sizeOptions, blobs): void {
     // initiate OpenSeadragon with options and loaded tiles
     this.zone.run(() => {
@@ -215,6 +225,7 @@ export class ViewComponent implements OnInit, OnChanges {
         }
       });
       this.view.navigator.element.classList.add('mat-elevation-z6', 'card-border-radius');
+      this.view.drawer.canvas.id = 'osd-main-canvas';
     });
   }
 }
