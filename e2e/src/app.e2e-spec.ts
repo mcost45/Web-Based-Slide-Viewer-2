@@ -1,36 +1,51 @@
-import { browser, logging } from 'protractor';
+import { browser, by, element, logging, protractor, $ } from 'protractor';
 import { AppPage } from './app.po';
+import { performance } from 'perf_hooks';
 
 describe('Viewer App', () => {
+  const SECOND = 1000;
+  const VMIC_WAIT_LIMIT = 30 * SECOND;
+  const EC = protractor.ExpectedConditions;
   let page: AppPage;
-  const second = 1000;
-  // run before every test
-  beforeEach(() => {
+  let startLoadTime: DOMHighResTimeStamp;
+
+  // run once before all the tests
+  beforeAll(async () => {
     page = new AppPage();
+    await browser.waitForAngularEnabled(true);
+    await page.navigateTo();
+    startLoadTime = performance.now();
   });
+
   // tests
   it('loads initial elements', async () => {
-    browser.waitForAngularEnabled(false);
-    await page.navigateTo();
-    expect(await page.getElementClasses('header')).toContain('mat-elevation-z6 elevate-z-2');
-    expect(await page.getElementClasses('page-content')).toContain('flex-fill pos-relative');
-    expect(await (await page.getElement('loading-card')).isPresent()).toBe(true);
-    expect(await (await page.getElement('viewer-settings')).isPresent()).toBe(true);
-    expect(await (await page.getElement('viewer')).isPresent()).toBe(true);
-    expect(await (await page.getElement('osd-wrapper')).isPresent()).toBe(true);
+    expect(await page.getElementClasses('#header')).toContain('mat-elevation-z6 elevate-z-2');
+    expect(await page.getElementClasses('#page-content')).toContain('flex-fill pos-relative');
+    expect(await (await page.getElement('#loading-card')).isPresent()).toBe(true);
+    expect(await (await page.getElement('#viewer-settings')).isPresent()).toBe(true);
+    expect(await (await page.getElement('#viewer')).isPresent()).toBe(true);
+    expect(await (await page.getElement('#osd-wrapper')).isPresent()).toBe(true);
   });
-  it('loads default vmic within 30 seconds', async () => {
-    browser.waitForAngularEnabled(true);
-    await page.navigateTo();
-    browser.wait(async () => {
-      await page.getElementValue('loading-card', 'loadingProgress').then((value) => {
-        return value === 100;
-      }, () => {
-      });
-    }, 30 * second, '.vmic took too long to load!');
-    expect(await (await page.getElement('loading-card')).isDisplayed()).toBe(false);
-    expect(await (await page.getElement('viewer-settings')).isDisplayed()).toBe(true);
+  it('loads default vmic within ' + (vmicWaitLimit / 1000) + 's', async (done) => {
+    let finishedLoadTime;
+    // browser.waitForAngularEnabled(false);
+    const target = await page.getElement('#loading-card-inner');
+    browser.wait(
+      () => {
+        return target.getAttribute('class').then((classes) => {
+          return classes.includes('hidden');
+         });
+      }, vmicWaitLimit, '.vmic took over ' + (vmicWaitLimit / second) + 's to load!'
+    ).then(() => {
+        finishedLoadTime = performance.now();
+        console.log('Loaded .vmic in ' + ((finishedLoadTime - startLoadTime) / 1000).toPrecision(4) + 's');
+        done();
+    }, (error) => {
+      console.log(error);
+    });
+    // expect(await (await page.getElement('#viewer-settings')).isDisplayed()).toBe(true);
   });
+
   // run after each test
   afterEach(async () => {
     // Assert that there are no errors emitted from the browser

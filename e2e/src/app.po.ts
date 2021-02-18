@@ -1,16 +1,20 @@
 import { browser, by, element, ElementFinder } from 'protractor';
+import { WebdriverWebElement } from 'protractor/built/element';
 
 export class AppPage {
   async navigateTo(): Promise<unknown> {
     return browser.get(browser.baseUrl);
   }
-  async getElement(id: string): Promise<ElementFinder> {
-    return element(by.id(id));
+  async getElement(tag: string): Promise<ElementFinder> {
+    return element(by.css(tag));
   }
-  async getElementClasses(id: string): Promise<string> {
-    return element(by.id(id)).getAttribute('class');
+  async getElementClasses(tag: string): Promise<string> {
+    return element(by.css(tag)).getAttribute('class');
   }
-  async getElementValue(id: string, value: string): Promise<string | number> {
-    return element(by.id(id)).getAttribute(value);
+  async getElementInputVal(tag: string, input: string): Promise<string | number | boolean | null | WebdriverWebElement> {
+    return element(by.css(tag)).evaluate(input);
+  }
+  async getElementAttribute(tag: string, value: string): Promise<string | number | boolean | null> {
+    return element(by.css(tag)).getAttribute(value);
   }
 }

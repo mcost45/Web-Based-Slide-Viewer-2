@@ -1,5 +1,5 @@
 <!-- Hide loading display once 100% is reached -->
-<div class="centre-absolute" [hidden]="loadingProgress == 100">
+<div id='loading-card-inner' class="centre-absolute" [ngClass]="{'hidden': loadingProgress === 100}">
   <mat-card class="mat-elevation-z6">
     <!--  Set progress spinner value to match loadingProgress value  -->
     <mat-progress-spinner class='centre-margin' color="accent" aria-label="loading vmic"

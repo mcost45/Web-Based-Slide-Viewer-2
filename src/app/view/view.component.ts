@@ -1,5 +1,5 @@
 import { AppConstants } from '../app.constants';
-import { Component, Input, OnInit, OnChanges } from '@angular/core';
+import {Component, Input, OnInit, OnChanges, NgZone} from '@angular/core';
 import { Store } from '@ngrx/store';
 import { SetProgress } from '../app.actions';
 import { AppState } from '../app.reducer';
@@ -29,7 +29,7 @@ export class ViewComponent implements OnInit, OnChanges {
   // store OSD view object
   private view: OSD.Viewer;
   // initialise store and JSZip
-  constructor(private store: Store<AppState>) {
+  constructor(private store: Store<AppState>, private zone: NgZone) {
     this.zipVMIC = new JSZip();
   }
   // inputs for adjustment filter values
@@ -53,7 +53,9 @@ export class ViewComponent implements OnInit, OnChanges {
   }
   ngOnInit(): void {
     // begin unzipping .vmic & loading OSD view with the tiles
-    this.loadView();
+    this.zone.runOutsideAngular(() => {
+      this.loadView();
+    });
   }
   // update adjustment filters on input changes
   ngOnChanges(): void {
@@ -75,7 +77,11 @@ export class ViewComponent implements OnInit, OnChanges {
         // retrieve the dzc output xml settings & all tiles in an array, stored as blob URLs, then run callback
         this.getDzcOutput(contents, this.PYRAMID_FILE, (file, outputBlobs) => {
           // loading has completed, loading state: 100
-          this.store.dispatch(new SetProgress(100));
+          this.zone.run(() => {
+            this.store.dispatch(new SetProgress(100));
+            // no longer need to keep zip object in memory
+            this.zipVMIC = null;
+          });
           if (!file) {
             console.log('Could not find ' + this.PYRAMID_FILE);
             return 0;
@@ -84,8 +90,6 @@ export class ViewComponent implements OnInit, OnChanges {
             console.log('Could not load output files');
             return 0;
           }
-          // no longer need to keep zip object in memory
-          this.zipVMIC = null;
           // get OSD settings from DZC Output XML
           file.text().then(text => {
             xmlObject = XMLJS.xml2js(text, {
@@ -122,11 +126,13 @@ export class ViewComponent implements OnInit, OnChanges {
     let newPercent;
     zipObject.file(path).async(dataType, (progress) => {
       // update new loading percentage states
-      percent = Math.round(progress.percent * 0.99);
-      if (percent !== newPercent) {
-        newPercent = percent;
-        this.store.dispatch(new SetProgress(newPercent));
-      }
+      this.zone.run(() => {
+        percent = Math.round(progress.percent * 0.99);
+        if (percent !== newPercent) {
+          newPercent = percent;
+          this.store.dispatch(new SetProgress(newPercent));
+        }
+      });
     }).then((unzipped) => {
       zipObject.loadAsync(unzipped).then((contents) => {
         onComplete(contents);
@@ -178,35 +184,37 @@ export class ViewComponent implements OnInit, OnChanges {
   }
   private initiateOSD(imageOptions, sizeOptions, blobs): void {
     // initiate OpenSeadragon with options and loaded tiles
-    this.view = OSD({
-      id: this.OSD_SETTINGS.WRAPPER_ID,
-      showNavigationControl: this.OSD_SETTINGS.SHOW_NAVIGATION_CONTROL,
-      showNavigator: this.OSD_SETTINGS.SHOW_NAVIGATOR,
-      navigatorPosition: this.OSD_SETTINGS.NAVIGATOR_POSITION,
-      navigatorLeft: this.OSD_SETTINGS.NAVIGATOR_LEFT,
-      navigatorTop: this.OSD_SETTINGS.NAVIGATOR_TOP,
-      navigatorWidth: this.OSD_SETTINGS.NAVIGATOR_WIDTH,
-      navigatorHeight: this.OSD_SETTINGS.NAVIGATOR_HEIGHT,
-      navigatorAutoResize: this.OSD_SETTINGS.NAVIGATOR_AUTO_RESIZE,
-      navigatorAutoFade: this.OSD_SETTINGS.NAVIGATOR_AUTO_FADE,
-      navigatorMaintainSizeRatio: this.OSD_SETTINGS.NAVIGATOR_MAINTAIN_SIZE_RATIO,
-      navigatorBorderColor: this.OSD_SETTINGS.NAVIGATOR_BORDER_COLOR,
-      navigatorOpacity: this.OSD_SETTINGS.NAVIGATOR_OPACITY,
-      visibilityRatio: this.OSD_SETTINGS.VISIBILITY_RATIO,
-      zoomPerScroll: this.OSD_SETTINGS.ZOOM_PER_SCROLL,
-      gestureSettingsMouse: this.OSD_SETTINGS.GESTURE_SETTINGS_MOUSE,
-      tileSources: {
-        height: parseInt(sizeOptions.Height, 10),
-        width: parseInt(sizeOptions.Width, 10),
-        tileSize: parseInt(imageOptions.TileSize, 10),
-        tileOverlap: parseInt(imageOptions.Overlap, 10),
-        maxLevel: this.OSD_SETTINGS.MAX_LEVEL,
-        minLevel: this.OSD_SETTINGS.MIN_LEVEL,
-        getTileUrl: (level, x, y) => {
-          return blobs[level][x][y];
+    this.zone.run(() => {
+      this.view = OSD({
+        id: this.OSD_SETTINGS.WRAPPER_ID,
+        showNavigationControl: this.OSD_SETTINGS.SHOW_NAVIGATION_CONTROL,
+        showNavigator: this.OSD_SETTINGS.SHOW_NAVIGATOR,
+        navigatorPosition: this.OSD_SETTINGS.NAVIGATOR_POSITION,
+        navigatorLeft: this.OSD_SETTINGS.NAVIGATOR_LEFT,
+        navigatorTop: this.OSD_SETTINGS.NAVIGATOR_TOP,
+        navigatorWidth: this.OSD_SETTINGS.NAVIGATOR_WIDTH,
+        navigatorHeight: this.OSD_SETTINGS.NAVIGATOR_HEIGHT,
+        navigatorAutoResize: this.OSD_SETTINGS.NAVIGATOR_AUTO_RESIZE,
+        navigatorAutoFade: this.OSD_SETTINGS.NAVIGATOR_AUTO_FADE,
+        navigatorMaintainSizeRatio: this.OSD_SETTINGS.NAVIGATOR_MAINTAIN_SIZE_RATIO,
+        navigatorBorderColor: this.OSD_SETTINGS.NAVIGATOR_BORDER_COLOR,
+        navigatorOpacity: this.OSD_SETTINGS.NAVIGATOR_OPACITY,
+        visibilityRatio: this.OSD_SETTINGS.VISIBILITY_RATIO,
+        zoomPerScroll: this.OSD_SETTINGS.ZOOM_PER_SCROLL,
+        gestureSettingsMouse: this.OSD_SETTINGS.GESTURE_SETTINGS_MOUSE,
+        tileSources: {
+          height: parseInt(sizeOptions.Height, 10),
+          width: parseInt(sizeOptions.Width, 10),
+          tileSize: parseInt(imageOptions.TileSize, 10),
+          tileOverlap: parseInt(imageOptions.Overlap, 10),
+          maxLevel: this.OSD_SETTINGS.MAX_LEVEL,
+          minLevel: this.OSD_SETTINGS.MIN_LEVEL,
+          getTileUrl: (level, x, y) => {
+            return blobs[level][x][y];
+          }
         }
-      }
+      });
+      this.view.navigator.element.classList.add('mat-elevation-z6', 'card-border-radius');
     });
-    this.view.navigator.element.classList.add('mat-elevation-z6', 'card-border-radius');
   }
 }
