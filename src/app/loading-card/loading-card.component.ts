@@ -8,10 +8,13 @@ import { Component, OnInit, AfterViewInit, Input } from '@angular/core';
 })
 export class LoadingCardComponent implements OnInit, AfterViewInit {
   readonly DEFAULT_VMIC = AppConstants.DEFAULT_VMIC;
+
+  @Input() loadingProgress = 0;
+
   constructor() {}
 
-  @Input() loadingProgress: number;
   ngOnInit(): void {}
+
   ngAfterViewInit(): void {
     document.getElementById('loading-text').innerHTML = 'Loading ' + this.DEFAULT_VMIC.toUpperCase() + '...';
   }

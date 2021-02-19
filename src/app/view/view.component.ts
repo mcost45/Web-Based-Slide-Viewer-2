@@ -29,15 +29,15 @@ export class ViewComponent implements OnInit, OnChanges {
   // store OSD view object
   private view: OSD.Viewer;
 
+  // inputs for adjustment filter values
+  @Input() brightness = 0;
+  @Input() contrast = 0;
+  @Input() saturation = 0;
+
   // initialise store and JSZip
   constructor(private store: Store<AppState>, private zone: NgZone) {
     this.zipVMIC = new JSZip();
   }
-
-  // inputs for adjustment filter values
-  @Input() brightness: number;
-  @Input() contrast: number;
-  @Input() saturation: number;
 
   // static utility functions
   private static getFileNameFromPath(path: string): string {
@@ -50,8 +50,8 @@ export class ViewComponent implements OnInit, OnChanges {
     return X_Y.split('_');
   }
   private static updateFilters(element: HTMLElement, contrast: number, brightness: number, saturation: number): void {
-    element.style.filter = 'contrast(' + (100 + contrast) + '%) ' +
-      'brightness(' + (100 + brightness) + '%) ' +
+    element.style.filter = 'brightness(' + (100 + brightness) + '%) ' +
+      'contrast(' + (100 + contrast) + '%) ' +
       'saturate(' + (100 + saturation) + '%)';
   }
 
@@ -67,45 +67,35 @@ export class ViewComponent implements OnInit, OnChanges {
     }
   }
 
-  // main component function
+  // main component function - goes through the process of loading the default .vmic, then initialising OSD to show it
+  // it is structured using callback functions rather than awaits/thens, helps display the nested nature of the unzip
   private loadView(): void {
+    // run the loading process outside of the angular zone - it is mainly long-running async unzipping/looking through
+    // files which will prevent the zone from stabilising to be used in e2e tests - only run store dispatches or code
+    // that needs to update component visuals back within the zone again
     this.zone.runOutsideAngular(() => {
       const vmicPath = this.VMIC_LOCATION + this.DEFAULT_VMIC;
-      // variables to store the DZC Output XML OSD settings
-      let TSOptionsAttributes: object;
-      let TSOptionsSizeAttributes: object;
-      let xmlObject: XMLJS.Element | XMLJS.ElementCompact;
       // unzip the .vmic file, then run callback
       this.unzipBase(vmicPath, this.zipVMIC, (VMICI) => {
         // unzip the Image/.vmici file, then run callback
         this.unzipNested(VMICI, this.DEFAULT_ZIP_DATA_TYPE, this.DZC_OUTPUT_DIR, (contents) => {
           // retrieve the dzc output xml settings & all tiles in an array, stored as blob URLs, then run callback
           this.getDzcOutput(contents, this.PYRAMID_FILE, (file, outputBlobs) => {
+            // runs very minimal checks for missing content; needs expanding on
+            this.validateResults(file, outputBlobs);
             // loading has completed, loading state: 100
             this.zone.run(() => {
               this.store.dispatch(new SetProgress(100));
-              // no longer need to keep zip object in memory
-              this.zipVMIC = null;
             });
-            if (!file) {
-              console.log('Could not find ' + this.PYRAMID_FILE);
-              return 0;
-            }
-            if (outputBlobs.length === 0) {
-              console.log('Could not load output files');
-              return 0;
-            }
+            // no longer need to keep zip object in memory
+            this.zipVMIC = null;
             // get OSD settings from DZC Output XML
-            file.text().then(text => {
-              xmlObject = XMLJS.xml2js(text, {
-                compact: true,
-                ignoreDeclaration: true,
-                nativeType: true
-              });
-              TSOptionsAttributes = xmlObject[this.XML_ELEMENT][this.XML_ATTRIBUTES];
-              TSOptionsSizeAttributes = xmlObject[this.XML_ELEMENT][this.XML_ELEMENT_SIZE][this.XML_ATTRIBUTES];
+            file.text().then((text) => {
+              const XMLSettings = this.processXMLFile(text);
+              const imageOptionAttributes = XMLSettings[0];
+              const imageSizeOptionAttributes = XMLSettings[1];
               // load OSD with the tiles
-              this.initiateOSD(TSOptionsAttributes, TSOptionsSizeAttributes, outputBlobs);
+              this.initiateOSD(imageOptionAttributes, imageSizeOptionAttributes, outputBlobs);
             });
           });
         });
@@ -134,13 +124,13 @@ export class ViewComponent implements OnInit, OnChanges {
     let newPercent;
     zipObject.file(path).async(dataType, (progress) => {
       // update new loading percentage states
-      this.zone.run(() => {
-        percent = Math.round(progress.percent * 0.99);
-        if (percent !== newPercent) {
-          newPercent = percent;
+      percent = Math.round(progress.percent * 0.99);
+      if (percent !== newPercent) {
+        newPercent = percent;
+        this.zone.run(() => {
           this.store.dispatch(new SetProgress(newPercent));
-        }
-      });
+        });
+      }
     }).then((unzipped) => {
       zipObject.loadAsync(unzipped).then((contents) => {
         onComplete(contents);
@@ -192,40 +182,63 @@ export class ViewComponent implements OnInit, OnChanges {
     }
   }
 
+  private validateResults(file: Blob, outputBlobs: URL[][][]): void {
+    if (!file) {
+      console.log('Could not find ' + this.PYRAMID_FILE);
+      process.exit(1);
+    }
+    if (outputBlobs.length === 0) {
+      console.log('Could not load output files');
+      process.exit(1);
+    }
+  }
+
+  private processXMLFile(contents: string): XMLJS.Element | XMLJS.ElementCompact {
+    const xmlObject = XMLJS.xml2js(contents, {
+      compact: true,
+      ignoreDeclaration: true,
+      nativeType: true
+    });
+    const imageOptionAttributes = xmlObject[this.XML_ELEMENT][this.XML_ATTRIBUTES];
+    const imageSizeOptionAttributes = xmlObject[this.XML_ELEMENT][this.XML_ELEMENT_SIZE][this.XML_ATTRIBUTES];
+    return [imageOptionAttributes, imageSizeOptionAttributes];
+  }
+
   private initiateOSD(imageOptions, sizeOptions, blobs): void {
     // initiate OpenSeadragon with options and loaded tiles
-    this.zone.run(() => {
-      this.view = OSD({
-        id: this.OSD_SETTINGS.WRAPPER_ID,
-        showNavigationControl: this.OSD_SETTINGS.SHOW_NAVIGATION_CONTROL,
-        showNavigator: this.OSD_SETTINGS.SHOW_NAVIGATOR,
-        navigatorPosition: this.OSD_SETTINGS.NAVIGATOR_POSITION,
-        navigatorLeft: this.OSD_SETTINGS.NAVIGATOR_LEFT,
-        navigatorTop: this.OSD_SETTINGS.NAVIGATOR_TOP,
-        navigatorWidth: this.OSD_SETTINGS.NAVIGATOR_WIDTH,
-        navigatorHeight: this.OSD_SETTINGS.NAVIGATOR_HEIGHT,
-        navigatorAutoResize: this.OSD_SETTINGS.NAVIGATOR_AUTO_RESIZE,
-        navigatorAutoFade: this.OSD_SETTINGS.NAVIGATOR_AUTO_FADE,
-        navigatorMaintainSizeRatio: this.OSD_SETTINGS.NAVIGATOR_MAINTAIN_SIZE_RATIO,
-        navigatorBorderColor: this.OSD_SETTINGS.NAVIGATOR_BORDER_COLOR,
-        navigatorOpacity: this.OSD_SETTINGS.NAVIGATOR_OPACITY,
-        visibilityRatio: this.OSD_SETTINGS.VISIBILITY_RATIO,
-        zoomPerScroll: this.OSD_SETTINGS.ZOOM_PER_SCROLL,
-        gestureSettingsMouse: this.OSD_SETTINGS.GESTURE_SETTINGS_MOUSE,
-        tileSources: {
-          height: parseInt(sizeOptions.Height, 10),
-          width: parseInt(sizeOptions.Width, 10),
-          tileSize: parseInt(imageOptions.TileSize, 10),
-          tileOverlap: parseInt(imageOptions.Overlap, 10),
-          maxLevel: this.OSD_SETTINGS.MAX_LEVEL,
-          minLevel: this.OSD_SETTINGS.MIN_LEVEL,
-          getTileUrl: (level, x, y) => {
-            return blobs[level][x][y];
-          }
+    this.view = OSD({
+      id: this.OSD_SETTINGS.WRAPPER_ID,
+      showNavigationControl: this.OSD_SETTINGS.SHOW_NAVIGATION_CONTROL,
+      showNavigator: this.OSD_SETTINGS.SHOW_NAVIGATOR,
+      navigatorPosition: this.OSD_SETTINGS.NAVIGATOR_POSITION,
+      navigatorLeft: this.OSD_SETTINGS.NAVIGATOR_LEFT,
+      navigatorTop: this.OSD_SETTINGS.NAVIGATOR_TOP,
+      navigatorWidth: this.OSD_SETTINGS.NAVIGATOR_WIDTH,
+      navigatorHeight: this.OSD_SETTINGS.NAVIGATOR_HEIGHT,
+      navigatorAutoResize: this.OSD_SETTINGS.NAVIGATOR_AUTO_RESIZE,
+      navigatorAutoFade: this.OSD_SETTINGS.NAVIGATOR_AUTO_FADE,
+      navigatorMaintainSizeRatio: this.OSD_SETTINGS.NAVIGATOR_MAINTAIN_SIZE_RATIO,
+      navigatorBorderColor: this.OSD_SETTINGS.NAVIGATOR_BORDER_COLOR,
+      navigatorOpacity: this.OSD_SETTINGS.NAVIGATOR_OPACITY,
+      visibilityRatio: this.OSD_SETTINGS.VISIBILITY_RATIO,
+      zoomPerScroll: this.OSD_SETTINGS.ZOOM_PER_SCROLL,
+      gestureSettingsMouse: this.OSD_SETTINGS.GESTURE_SETTINGS_MOUSE,
+      tileSources: {
+        height: parseInt(sizeOptions.Height, 10),
+        width: parseInt(sizeOptions.Width, 10),
+        tileSize: parseInt(imageOptions.TileSize, 10),
+        tileOverlap: parseInt(imageOptions.Overlap, 10),
+        maxLevel: this.OSD_SETTINGS.MAX_LEVEL,
+        minLevel: this.OSD_SETTINGS.MIN_LEVEL,
+        getTileUrl: (level, x, y) => {
+          return blobs[level][x][y];
         }
-      });
-      this.view.navigator.element.classList.add('mat-elevation-z6', 'card-border-radius');
-      this.view.drawer.canvas.id = 'osd-main-canvas';
+      }
     });
+    // making adjustments to some OSD elements
+    this.view.navigator.element.classList.add('mat-elevation-z6', 'card-border-radius');
+    this.view.drawer.canvas.id = 'osd-main-canvas';
+    // initialise the canvas with no filters (useful for testing)
+    ViewComponent.updateFilters(this.view.drawer.canvas, 0, 0, 0);
   }
 }

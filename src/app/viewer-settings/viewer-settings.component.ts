@@ -10,9 +10,10 @@ import { SetBrightness, SetContrast, SetSaturation } from '../app.actions';
   styleUrls: ['./viewer-settings.component.css']
 })
 export class ViewerSettingsComponent implements OnInit {
+  @Input() loadingProgress = 0;
+
   constructor(private store: Store<AppState>) {}
 
-  @Input() loadingProgress: number;
   ngOnInit(): void {}
 
   changeBrightness($event: MatSliderChange): void {

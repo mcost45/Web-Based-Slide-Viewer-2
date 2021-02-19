@@ -13,7 +13,9 @@ export class PageContentComponent implements OnInit {
   brightness$: Observable<number>;
   contrast$: Observable<number>;
   saturation$: Observable<number>;
+
   constructor(private store: Store<AppState>) {}
+
   ngOnInit(): void {
     this.loadingProgress$ = this.store.pipe(select(selectLoading));
     this.brightness$ = this.store.pipe(select(selectBrightness));
