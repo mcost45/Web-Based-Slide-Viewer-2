@@ -4,11 +4,11 @@ This project was created to develop Angular (+ Material, NgRx, e2e Testing & Ope
 
 ### Component Overview
 
-App Component
-    --- Page Content Component
-        --- Loading Card Component
-        --- Viewer Settings Component
-        --- View Component
+App Component\
+    --- Page Content Component\\
+        --- Loading Card Component\
+        --- Viewer Settings Component\
+        --- View Component\
 
 The loading card component displays the progress spinner as the default .vmic is loaded. The viewer settings component displays sliders to ajust the filters on the OpenSeadragon canvas. The view component contains the OpenSeadragon wrapper, and contains the bulk of the typescript.
 
